@@ -20,6 +20,10 @@ sig Pasta extends Diretorio {
 	pai: one Diretorio -- equivalente ao "/.." ?
 }
 
+fact{
+	no p: Pasta | Root in p.conteudo -- nenhuma pasta contem Root
+	all a: Arquivo | a in Diretorio.conteudo -- todo arquivo esta dentro de algum diretorio
+}
 ---------------
 pred test {
 	some Objeto
