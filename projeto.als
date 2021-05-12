@@ -42,7 +42,7 @@ fact pastas {
 }
 
 fact permissoes {	
-	hierarquiaPermicao
+	hierarquiaPermicao --hierarquia das permicoes
 	
 	all permissao: Permissao | permissao in Objeto.todos or permissao in Objeto.externo or permissao in Objeto.local -- Toda permissao criada no modelo precisa estar relacionada a um objeto
 	
@@ -96,6 +96,31 @@ pred hierarquiaPermicao {
 	)
 }
 
+fun quantidadeItensNaPasta (local: Diretorio): Int {
+	#local.conteudo
+}
+
+fun caminhoDoObjeto(objeto: Objeto): set Diretorio {
+	objeto.^(~conteudo)
+}
+
+--verifica se todo objeto tem Root como diretorio superior
+assert herdaDeRoot {
+	all o: Objeto-Root | Root in caminhoDoObjeto[o] --Root esta no caminho de todo os objetos exeto o dele mesmo (Root não tem caminho)
+}
+
+--Verifica se um objeto pode esta em mais de 1 diretorio ao mesmo tempo
+assert localDuplicado{
+	no o: Objeto, d1,d2: Diretorio | d1 != d2 and o in d1.conteudo and o in d2.conteudo
+}
+
+--Verifica algumas opções de herança na permição são respeitadas
+assert herancaPermicao{
+	no o: Objeto | o.local = EscritaLeitura and (o.~conteudo).local = Leitura
+	all a: Arquivo | a.todos = Dono implies caminhoDoObjeto[a].todos = Dono
+	all p: Pasta | p.externo = Dono implies (p.^pai).externo = Dono
+}
+
 ---------------
 
 
@@ -104,4 +129,5 @@ pred test {
 	#Pasta > 1
 }
 
-run test for 8
+--run test for 8
+check herassaPermicao for 8
