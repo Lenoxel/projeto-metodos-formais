@@ -26,7 +26,7 @@ abstract sig TipoDoUsuario {}
 one sig Local, Externo extends TipoDoUsuario {} 
 
 sig Usuario {
-	permissoes: set Objeto,
+	permissoes: set (Objeto -> one Permissao),
 	tipo: one TipoDoUsuario
 }
 
@@ -41,17 +41,45 @@ fact pastas {
 	all arquivo: Arquivo | one arquivo.~conteudo -- todo arquivo so pode esta em um diretorio
 }
 
-fact permissoes {	
-	hierarquiaPermicao --hierarquia das permicoes
+fact permissoesUsuarios {	
+	hierarquiaPermissao --hierarquia das permissoes
 	
-	all permissao: Permissao | permissao in Objeto.todos or permissao in Objeto.externo or permissao in Objeto.local -- Toda permissao criada no modelo precisa estar relacionada a um objeto
-	
+	all permissao: Permissao | permissaoRelacionadaObjeto[permissao] -- Toda permissao criada no modelo precisa estar relacionada a um objeto
 	all usuario: Usuario | some usuario.permissoes -- Todo usuario criado no modelo precisa ter alguma permissao para alguma pasta, arquivo ou diretorio
 	all tipoDoUsuario: TipoDoUsuario | tipoDoUsuario in Usuario.tipo -- Todo tipoDoUsuario criado no modelo precisa estar relacionado a um Usuario
+	all objeto: Objeto, permissao: Permissao | apenasDonosAlteramPermissao[objeto, permissao]
+}
+
+fact objetos {
+	all objeto: Objeto | garantirHierarquiaDePermissoes[objeto]
+}
+
+pred permissaoRelacionadaObjeto(permissao: Permissao) {
+	permissao in Objeto.todos or permissao in Objeto.externo or permissao in Objeto.local
+}
+
+pred apenasDonosAlteramPermissao(objeto: Objeto, permissao: Permissao) {
+	no usuario: Usuario | buscarPermissaoNoObjeto[objeto, usuario] != Dono and (alterarPermissaoTodos[objeto, permissao] or alterarPermissaoLocal[objeto, permissao] or alterarPermissaoExterno[objeto, permissao])
+}
+
+pred alterarPermissaoTodos(objeto: Objeto, permissao: Permissao) {
+	objeto.todos = permissao
+}
+
+pred alterarPermissaoLocal(objeto: Objeto, permissao: Permissao) {
+	objeto.local = permissao
+}
+
+pred alterarPermissaoExterno(objeto: Objeto, permissao: Permissao) {
+	objeto.externo = permissao
+}
+
+fun buscarPermissaoNoObjeto(objeto: Objeto, usuario: Usuario): lone Permissao {
+	objeto.(usuario.permissoes)
 }
 
 -- Um arquivo nunca pode ter, para uma determinada categoria de usuarios, uma permissao menos restrita do que um diretorio ancestral dele.
-pred garantirHiereaquiaDePermissoes(objeto: Objeto) {
+pred garantirHierarquiaDePermissoes(objeto: Objeto) {
 	no objeto: Objeto | 
 	(objeto.~conteudo.todos = Leitura and (objeto.todos = EscritaLeitura or objeto.todos = Dono))
 	or
@@ -67,28 +95,32 @@ pred garantirHiereaquiaDePermissoes(objeto: Objeto) {
 }
 
 -- Um arquivo nunca pode ter, para uma determinada categoria de usuarios, uma permissao menos restrita do que um diretorio ancestral dele.
-pred hierarquiaPermicao {
-	-- permição pastas dono
+pred hierarquiaPermissao {
+	-- permissao pastas dono
 	no pasta: Pasta | pasta.todos = Dono and ((pasta.pai).todos = Leitura or (pasta.pai).todos = EscritaLeitura)
 	no pasta: Pasta | pasta.local = Dono and ((pasta.pai).local = Leitura or (pasta.pai).local = EscritaLeitura)
 	no pasta: Pasta | pasta.externo = Dono and ((pasta.pai).externo = Leitura or (pasta.pai).externo = EscritaLeitura)
-	-- permição pasta EscritaLeitura
+
+	-- permissao pasta EscritaLeitura
 	no pasta: Pasta | pasta.todos = EscritaLeitura and (pasta.pai).todos = Leitura
 	no pasta: Pasta | pasta.local = EscritaLeitura and (pasta.pai).local = Leitura
 	no pasta: Pasta | pasta.externo = EscritaLeitura and (pasta.pai).externo = Leitura
-	--permição arquivo todos
+
+	--permissao arquivo todos
 	all arquivo: Arquivo | ( 
 		(arquivo.todos = Dono and (arquivo.~conteudo).todos = Dono) or 
 		(arquivo.todos = EscritaLeitura and ( ((arquivo.~conteudo).todos = Dono) or ((arquivo.~conteudo).todos = EscritaLeitura)) ) or
 		(arquivo.todos = Leitura)
 	)
-	--permição arquivo externo
+	
+	--permissao arquivo externo
 	all arquivo: Arquivo | ( 
 		(arquivo.externo = Dono and (arquivo.~conteudo).externo = Dono) or 
 		(arquivo.externo = EscritaLeitura and ( ((arquivo.~conteudo).externo = Dono) or ((arquivo.~conteudo).externo = EscritaLeitura)) ) or
 		(arquivo.externo = Leitura)
 	)
-	--permição arquivo local
+
+	--permissao arquivo local
 	all arquivo: Arquivo | ( 
 		(arquivo.local = Dono and (arquivo.~conteudo).local = Dono) or 
 		(arquivo.local = EscritaLeitura and ( ((arquivo.~conteudo).local = Dono) or ((arquivo.~conteudo).local = EscritaLeitura)) ) or
@@ -96,7 +128,7 @@ pred hierarquiaPermicao {
 	)
 }
 
-fun quantidadeItensNaPasta (local: Diretorio): Int {
+fun quantidadeItensNaPasta(local: Diretorio): Int {
 	#local.conteudo
 }
 
@@ -106,19 +138,25 @@ fun caminhoDoObjeto(objeto: Objeto): set Diretorio {
 
 --verifica se todo objeto tem Root como diretorio superior
 assert herdaDeRoot {
-	all o: Objeto-Root | Root in caminhoDoObjeto[o] --Root esta no caminho de todo os objetos exeto o dele mesmo (Root não tem caminho)
+	all objetoRoot: Objeto-Root | Root in caminhoDoObjeto[objetoRoot] --Root esta no caminho de todo os objetos, exceto o dele mesmo (Root não tem caminho)
 }
 
 --Verifica se um objeto pode esta em mais de 1 diretorio ao mesmo tempo
-assert localDuplicado{
-	no o: Objeto, d1,d2: Diretorio | d1 != d2 and o in d1.conteudo and o in d2.conteudo
+assert localDuplicado {
+	no objeto: Objeto, diretorio1, diretorio2: Diretorio | diretorio1 != diretorio2 and objeto in diretorio1.conteudo and objeto in diretorio2.conteudo
 }
 
---Verifica algumas opções de herança na permição são respeitadas
-assert herancaPermicao{
-	no o: Objeto | o.local = EscritaLeitura and (o.~conteudo).local = Leitura
-	all a: Arquivo | a.todos = Dono implies caminhoDoObjeto[a].todos = Dono
-	all p: Pasta | p.externo = Dono implies (p.^pai).externo = Dono
+--Verifica algumas opções de herança na permissao são respeitadas
+assert herancaPermissao1 {
+	no objeto: Objeto | objeto.local = EscritaLeitura and (objeto.~conteudo).local = Leitura
+}
+
+assert herancaPermissao2 {
+	all arquivo: Arquivo | arquivo.todos = Dono implies caminhoDoObjeto[arquivo].todos = Dono
+}
+
+assert herancaPermissao3 {
+	all pasta: Pasta | pasta.externo = Dono implies (pasta.^pai).externo = Dono
 }
 
 ---------------
@@ -129,5 +167,6 @@ pred test {
 	#Pasta > 1
 }
 
---run test for 8
-check herassaPermicao for 8
+run test for 8
+
+// check herancaPermissao for 8
